@@ -25,3 +25,14 @@ main() {
 ```
 main() // key was changed from initial value to new value
 ```
+
+## Apply
+
+Apply a new map to the state, and get events for all nodes that was created or changed.
+
+```dart
+state.apply({
+  'new key': 'new value',
+  'key': 'new value'
+});
+```
