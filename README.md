@@ -13,7 +13,7 @@ main() {
     'key': 'initial value'
   });
 
-  state.listen((String key, newValue, oldValue) {
+  state.change.listen((String key, newValue, oldValue) {
 
     print('$key was changed from $oldValue to $newValue');
   });

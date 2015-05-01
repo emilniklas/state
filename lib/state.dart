@@ -1,149 +1,371 @@
+library state;
+
 import 'dart:async';
 
-/// The `State` class is essentially a wrapper around a `Map<String, dynamic>`
-/// that reports to a `Stream` whenever a key or sub-key has it's value changed.
-///
-/// Listen for changes with the `listen` method.
-class State {
+part 'change_event.dart';
+part 'create_event.dart';
+part 'delete_event.dart';
 
-  /// The change event propagates down the tree, to the first `State` object, so
-  /// we contain the parent node inside the `_parent` property.
+class State implements Map<String, dynamic>, List {
+
+  dynamic _bucket;
+
   State _parent;
 
-  /// `_state` is the actual map that contains the values.
-  Map<String, dynamic> _state = {};
+  var _parentKey;
 
-  /// `_controller` is the `StreamController` that manages the change event.
-  StreamController _controller = new StreamController();
+  bool _initialized = false;
 
-  /// A new instance of `State` can optionally be created with a parent `State`.
-  State([this._parent]);
+  StreamController<ChangeEvent> _changeController = new StreamController();
 
-  /// The class can be instantiated with an initial state. All sub-maps will be
-  /// recursively converted to sub-states.
-  factory State.fromMap(Map map) => new State._fromMap(map);
+  Stream<ChangeEvent> get change => _changeController.stream;
 
-  State._fromMap(Map map, [this._parent]) {
+  StreamController<CreateEvent> _createController = new StreamController();
 
-    for (var key in map.keys) {
+  Stream<CreateEvent> get create => _createController.stream;
 
-      if (map[key] is Map) {
+  StreamController<DeleteEvent> _deleteController = new StreamController();
 
-        _state[key] = new State._fromMap(map[key], this);
+  Stream<DeleteEvent> get delete => _deleteController.stream;
 
-        continue;
+  State() {
+    _initialized = true;
+  }
+
+  operator [](key) {
+
+    return _bucket[key];
+  }
+
+  operator []=(key, value) {
+
+    if (value is Map || value is List) {
+      return _bucket[key] = new State._fromBucket(value, this, key);
+    }
+
+    var oldValue = _bucket[key];
+
+    if (oldValue == value) return;
+
+    bool create = !_hasKey(key);
+
+    _bucket[key] = value;
+
+    if (_initialized) {
+      if (create) {
+        return _onCreate(key, value);
       }
-
-      _state[key] = map[key];
+      _onChange(key, value, oldValue);
     }
   }
 
-  /// Subscribe to the stream of changes.
-  listen(onChange(String key, dynamic newValue, dynamic oldValue)) {
+  _hasKey(key) {
 
-    _controller.stream.listen((List args) {
+    if (_bucket is Map)
+      return _bucket.containsKey(key);
 
-      Function.apply(onChange, args);
+    return _bucket.length >= key + 1;
+  }
+
+  State._plain();
+
+  factory State.fromMap(Map map) => new State._fromBucket(map);
+
+  factory State.fromList(List list) => new State._fromBucket(list.toList());
+
+  factory State._fromBucket(bucket, [State parent, parentKey]) {
+
+    var state = new State._plain()
+      .._parent = parent
+      .._parentKey = parentKey;
+
+    if (bucket is State) {
+      if (bucket._bucket is Map)
+        state._bucket = {};
+      else
+        state._bucket = [];
+    }
+    else if (bucket is Map)
+      state._bucket = {};
+    else
+      state._bucket = [];
+
+    state.apply((bucket is State) ? bucket.raw() : bucket);
+
+    state._initialized = true;
+    return state;
+  }
+
+  apply(bucket) {
+
+    if (bucket.runtimeType != _bucket.runtimeType) {
+
+      throw new Exception('Can\'t apply ${bucket.runtimeType} to ${_bucket.runtimeType}');
+    }
+
+    if (bucket is Map)
+      _applyMap(bucket);
+    else
+      _applyList(bucket.toList());
+  }
+
+  _applyToKey(key, value) {
+
+    if (value is Map) {
+
+      return this[key] = new State._fromBucket(value, this, key);
+    }
+
+    if (value is List) {
+
+      return this[key] = new State._fromBucket(value.toList(), this, key);
+    }
+
+    this[key] = value;
+  }
+
+  _applyMap(Map map) {
+
+    map.forEach((key, value) {
+
+      _applyToKey(key, value);
     });
   }
 
-  /// If the value is not the same as before, set the new value to the state,
-  /// and report the change.
-  operator []=(key, value) {
+  _applyList(List list) {
 
-    if (_state[key] == value) return;
+    for (var i = 0; i < list.length; ++i) {
 
-    // Report
-    _keyChanged(key, _state[key], value);
+      if (_bucket.length == i) {
 
-    // Set value
-    if (value is Map) {
-
-      return _state[key] = new State._fromMap(value, this);
-    }
-    _state[key] = value;
-  }
-
-  /// Read a value from the state
-  operator [](key) {
-
-    return _state[key];
-  }
-
-  /// Convert the state to a `Map<String, dynamic>`
-  Map<String, dynamic> toMap() {
-
-    Map<String, dynamic> map = {};
-
-    for (var key in _state.keys) {
-
-      if (_state[key] is State) {
-
-        map[key] = _state[key].toMap();
-
-        continue;
+        _bucket.add(null);
       }
 
-      map[key] = _state[key];
-    }
-    return map;
-  }
-
-  /// Propagate the event to the parent state, or (if isn't a child)
-  /// send a new event to the controller
-  _keyChanged(String key, oldValue, newValue) {
-
-    if (_parent != null) return _parent._stateChanged(this, key, oldValue, newValue);
-
-    if (newValue is State) newValue = newValue.toMap();
-
-    _controller.add([key, newValue, oldValue]);
-  }
-
-  /// Receive propagated event from a child state. Prepend the changed key
-  /// with the child state's key, separated with a dot
-  _stateChanged(State state, String key, oldValue, newValue) {
-
-    var parentKey = _findKeyByValue(state);
-
-    if (parentKey != null)
-      key = parentKey + '.$key';
-
-    _keyChanged(key, oldValue, newValue);
-  }
-
-  /// Find the child state's key in the map
-  String _findKeyByValue(value) {
-
-    for (var key in _state.keys) {
-
-      if (_state[key] == value) return key;
+      _applyToKey(i, list[i]);
     }
   }
 
-  /// Apply a map to a child, recursively converting maps to states
-  _applyMapToKey(Map map, String key) {
+  _onChange(key, newValue, oldValue) {
 
-    if (!_state.containsKey(key) || !_state[key] is State) {
+    _changeController.add(new _ChangeEvent(
+        key,
+        newValue,
+        oldValue
+    ));
 
-      return this[key] = new State._fromMap(map, this);
+    if (_parent != null) {
+
+      _parent._onChange('$_parentKey.$key', newValue, oldValue);
     }
-    _state[key].apply(map);
   }
 
-  /// Recursively apply changes to the state by comparing with `map`
-  apply(Map map) {
+  _onCreate(key, value) {
 
-    for (var key in map.keys) {
+    _createController.add(new _CreateEvent(
+        key,
+        value
+    ));
 
-      if (map[key] is Map) {
-        _applyMapToKey(map[key], key);
-        continue;
-      }
+    if (_parent != null) {
 
-      if (this[key] == map[key]) continue;
-
-      this[key] = map[key];
+      _parent._onCreate('$_parentKey.$key', value);
     }
+  }
+
+  _onDelete(key, value) {
+
+    _deleteController.add(new _DeleteEvent(
+        key,
+        value
+    ));
+
+    if (_parent != null) {
+
+      _parent._onDelete('$_parentKey.$key', value);
+    }
+  }
+
+  raw() {
+    var output;
+    if (_bucket is Map) {
+
+      output = {};
+
+      _bucket.forEach((key, value) {
+
+        if (value is State) {
+
+          return output[key] = value.raw();
+        }
+        output[key] = value;
+      });
+    }
+    else {
+
+      output = [];
+
+      _bucket.forEach((value) {
+
+        if (value is State) {
+
+          return output.add(value.raw());
+        }
+        output.add(value);
+      });
+    }
+    return output;
+  }
+
+  toString() {
+
+    return 'State(${raw()})';
+  }
+
+  bool containsValue(Object value) => _bucket.containsValue(value);
+
+  bool containsKey(Object key) => _bucket.containsKey(key);
+
+  dynamic putIfAbsent(String key, dynamic ifAbsent()) => _putIfAbsent(key, ifAbsent);
+
+  _putIfAbsent(String key, dynamic ifAbsent()) {
+
+    return _bucket.putIfAbsent(key, ifAbsent);
+  }
+
+  void addAll(other) => _addAll(other);
+
+  _addAll(other) {
+
+    return _bucket.addAll(other);
+  }
+
+  dynamic remove(something) => _remove(something);
+
+  dynamic _remove(something) {
+
+    var key;
+
+    if (_bucket is Map) {
+      key = something;
+    }
+    else {
+      key = indexOf(something);
+    }
+
+    var value = _bucket[key];
+
+    _bucket.remove(something);
+
+    _onDelete(key, value);
+  }
+
+  void clear() => _clear();
+
+  void _clear() {
+    return _bucket.clear();
+  }
+
+  void forEach(void f(String key, dynamic value)) => _bucket.forEach(f);
+
+  Iterable<String> get keys => _bucket.keys;
+
+  Iterable<dynamic> get values => _bucket.values;
+
+  int get length => _bucket.length;
+
+  bool get isEmpty => _bucket.isEmpty;
+
+  bool get isNotEmpty => _bucket.isNotEmpty;
+
+  void set length(int newLength) => _bucket.length(newLength);
+
+  void add(dynamic value) => _add(value);
+
+  void _add(dynamic value) {
+    return _bucket.add(value);
+  }
+
+  Iterable<dynamic> get reversed => _bucket.reversed;
+
+  void sort([int compare(dynamic a, dynamic b)]) => _bucket.sort(compare);
+
+  void shuffle([Random random]) => _shuffle(random);
+
+  void _shuffle([Random random]) {
+    return _bucket.shuffle(random);
+  }
+
+  int indexOf(dynamic element, [int start = 0]) => _bucket.indexOf(element, start);
+
+  int lastIndexOf(dynamic element, [int start]) => _bucket.lastIndexOf(element, start);
+
+  void insert(int index, dynamic element) => _insert(index, element);
+
+  void _insert(int index, dynamic element) {
+    return _bucket.insert(index, element);
+  }
+
+  void insertAll(int index, Iterable<dynamic> iterable) => _insertAll(index, iterable);
+
+  void _insertAll(int index, Iterable<dynamic> iterable) {
+    return _bucket.insertAll(index, iterable);
+  }
+
+  void setAll(int index, Iterable<dynamic> iterable) => _setAll(index, iterable);
+
+  void _setAll(int index, Iterable<dynamic> iterable) {
+    return _bucket.setAll(index, iterable);
+  }
+
+  dynamic removeAt(int index) => _removeAt(index);
+
+  dynamic _removeAt(int index) {
+    return _bucket.removeAt(index);
+  }
+
+  dynamic removeLast() => _removeLast();
+
+  dynamic _removeLast() {
+    return _bucket.removeLast();
+  }
+
+  void removeWhere(bool test(dynamic element)) => _removeWhere(test);
+
+  void _removeWhere(bool test(dynamic element)) {
+    return _bucket.removeWhere(test);
+  }
+
+  void retainWhere(bool test(dynamic element)) => _retainWhere(test);
+
+  void _retainWhere(bool test(dynamic element)) {
+    return _bucket.retainWhere(test);
+  }
+
+  List<dynamic> sublist(int start, [int end]) => _bucket.sublist(start, end);
+
+  Iterable<dynamic> getRange(int start, int end) => _bucket.getRange(start, end);
+
+  void setRange(int start, int end, Iterable<dynamic> iterable, [int skipCount = 0]) => _setRange(start, end, iterable, skipCount);
+
+  void _setRange(int start, int end, Iterable<dynamic> iterable, [int skipCount = 0]) {
+    return _bucket.setRange(start, end, iterable, skipCount);
+  }
+
+  void removeRange(int start, int end) => _removeRange(start, end);
+
+  void _removeRange(int start, int end) {
+    return _bucket.removeRange(start, end);
+  }
+
+  void fillRange(int start, int end, [dynamic fillValue]) => _fillRange(start, end, fillValue);
+
+  void _fillRange(int start, int end, [dynamic fillValue]) {
+    return _bucket.fillRange(start, end, fillValue);
+  }
+
+  void replaceRange(int start, int end, Iterable<dynamic> replacement) => _replaceRange(start, end, replacement);
+
+  void _replaceRange(int start, int end, Iterable<dynamic> replacement) {
+    return _bucket.replaceRange(start, end, replacement);
   }
 }
