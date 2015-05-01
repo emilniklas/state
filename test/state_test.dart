@@ -60,5 +60,34 @@ main() {
 
       state['dot']['path'] = 'initialValue';
     });
+
+    it('knows when non initial values are updated', () {
+
+      state = new State.fromMap({
+        'key': 'initialValue'
+      });
+
+      state.listen((String key, newValue, oldValue) {
+
+        print('$key changed from $oldValue to $newValue');
+//        expect(key, to.equals('dot'));
+//        expect(newValue, to.equals({'path':'initialValue'}));
+//        expect(oldValue, to.isNull);
+      });
+
+      state.apply({
+        'key': 'updated',
+        'newmap': {
+          'newkey': 'newvalue'
+        }
+      });
+
+      state.apply({
+        'key': 'updated',
+        'newmap': {
+          'newkey': 'updatedvalue'
+        }
+      });
+    });
   });
 }

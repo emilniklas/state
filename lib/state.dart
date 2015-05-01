@@ -22,6 +22,7 @@ class State {
   /// The class can be instantiated with an initial state. All sub-maps will be
   /// recursively converted to sub-states.
   factory State.fromMap(Map map) => new State._fromMap(map);
+
   State._fromMap(Map map, [this._parent]) {
 
     for (var key in map.keys) {
@@ -103,7 +104,10 @@ class State {
   /// with the child state's key, separated with a dot
   _stateChanged(State state, String key, oldValue, newValue) {
 
-    key = _findKeyByValue(state) + '.$key';
+    var parentKey = _findKeyByValue(state);
+
+    if (parentKey != null)
+      key = parentKey + '.$key';
 
     _keyChanged(key, oldValue, newValue);
   }
@@ -120,9 +124,10 @@ class State {
   /// Apply a map to a child, recursively converting maps to states
   _applyMapToKey(Map map, String key) {
 
-    if (!_state.containsKey(key) || !_state[key] is State)
-      return this[key] = new State._fromMap(map);
+    if (!_state.containsKey(key) || !_state[key] is State) {
 
+      return this[key] = new State._fromMap(map, this);
+    }
     _state[key].apply(map);
   }
 
