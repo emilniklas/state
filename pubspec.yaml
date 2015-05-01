@@ -1,0 +1,8 @@
+name: state
+version: 1.0.0
+description: An observable map
+author: Emil Persson <emil.n.persson@gmail.com>
+homepage: https://github.com/emilniklas/state
+dev_dependencies:
+  guinness: any
+  matcher: any
