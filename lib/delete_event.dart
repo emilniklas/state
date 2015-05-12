@@ -1,15 +1,15 @@
 part of state;
 
-abstract class DeleteEvent {
+abstract class DeleteEvent implements StateEvent {
 
-  final String key;
+  String key;
 
   final dynamic value;
 }
 
 class _DeleteEvent implements DeleteEvent {
 
-  final dynamic key;
+  String key;
 
   final dynamic value;
 

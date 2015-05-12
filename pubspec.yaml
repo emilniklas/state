@@ -1,5 +1,5 @@
 name: state
-version: 1.0.3
+version: 1.0.4
 description: An observable map
 author: Emil Persson <emil.n.persson@gmail.com>
 homepage: https://github.com/emilniklas/state

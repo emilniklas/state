@@ -1,15 +1,15 @@
 part of state;
 
-abstract class CreateEvent {
+abstract class CreateEvent implements StateEvent {
 
-  final String key;
+  String key;
 
   final dynamic value;
 }
 
 class _CreateEvent implements CreateEvent {
 
-  final dynamic key;
+  String key;
 
   final dynamic value;
 

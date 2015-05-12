@@ -2,6 +2,7 @@ library state;
 
 import 'dart:async';
 
+part 'state_event.dart';
 part 'change_event.dart';
 part 'create_event.dart';
 part 'delete_event.dart';

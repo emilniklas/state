@@ -1,8 +1,8 @@
 part of state;
 
-abstract class ChangeEvent {
+abstract class ChangeEvent implements StateEvent {
 
-  final String key;
+  String key;
 
   final dynamic oldValue;
 
@@ -11,13 +11,13 @@ abstract class ChangeEvent {
 
 class _ChangeEvent implements ChangeEvent {
 
-  final dynamic key;
+  String key;
 
   final dynamic oldValue;
 
   final dynamic newValue;
 
-  _ChangeEvent(this.key, this.newValue, this.oldValue);
+  _ChangeEvent(String this.key, this.newValue, this.oldValue);
 
   toString() {
     return 'ChangeEvent([$key] changed from [$oldValue] to [$newValue])';
